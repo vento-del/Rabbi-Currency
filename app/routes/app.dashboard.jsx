@@ -1,142 +1,208 @@
-import { Layout, Page, Text, Card, Button, Popover, ActionList, Badge } from '@shopify/polaris';
-import React, { useState, useEffect, useCallback } from 'react';
-import { useLoaderData } from '@remix-run/react'; // Make sure you're using Remix
-import { authenticate } from '../shopify.server';
+import { json } from "@remix-run/node";
+import { useLoaderData, useFetcher } from "@remix-run/react";
+import { GraphQLClient } from "graphql-request";
+import { useState, useEffect } from "react";
 
-export const loader = async ({ request }) => {
-    const { admin } = await authenticate.admin(request);
 
-    const response = await admin.graphql(`
-        query fetchShop {
-            shop {
-                id
-                metafield(namespace: "custom", key: "selected_currencies") {
-                    value
-                }
+const GRAPHQL_ENDPOINT = "https://ankie-23.myshopify.com/admin/api/2024-01/graphql.json";
+
+const client = new GraphQLClient(GRAPHQL_ENDPOINT, {
+  headers: {
+    "X-Shopify-Access-Token": "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",
+    "Content-Type": "application/json",
+  },
+});
+
+export const loader = async () => {
+  const query = `
+    {
+      shop {
+        id
+        name
+        metafields(first: 10) {
+          edges {
+            node {
+              id
+              namespace
+              key
+              value
             }
+          }
         }
-    `);
+      }
+    }
+  `;
 
-    const shopData = (await response.json()).data;
-    const selectedCurrencies = shopData?.shop?.metafield?.value
-        ? JSON.parse(shopData.shop.metafield.value)
-        : [];
-
-    return new Response(JSON.stringify({ selectedCurrencies, shopId: shopData?.shop?.id }), {
-        headers: { "Content-Type": "application/json" },
-    });
+  try {
+    const data = await client.request(query);
+    return json(data);
+  } catch (error) {
+    console.error("Error fetching shop data:", error);
+    return json({ error: "Failed to fetch shop data" }, { status: 500 });
+  }
 };
 
-export default function NewPage() {
-    const { selectedCurrencies: initialSelectedCurrencies, shopId } = useLoaderData();
-    const [popoverActive, setPopoverActive] = useState(false);
-    const [selectedCurrencies, setSelectedCurrencies] = useState(initialSelectedCurrencies || []);
+export const action = async ({ request }) => {
+  const formData = await request.formData();
+  const selectedCurrenciesArray = formData.getAll("currencies");
 
-    const togglePopover = () => setPopoverActive((active) => !active);
+  // Convert the array into an object { "USD": "US Dollar", "EUR": "Euro" }
+  const selectedCurrencies = selectedCurrenciesArray.reduce((acc, item) => {
+    const [code, name] = item.split(":");
+    acc[code] = name;
+    return acc;
+  }, {});
 
-    const currencies = [
-        { name: 'US Dollar', code: 'USD' },
-        { name: 'Euro', code: 'EUR' },
-        { name: 'British Pound', code: 'GBP' },
-        { name: 'Japanese Yen', code: 'JPY' },
-        { name: 'Indian Rupee', code: 'INR' }
-    ];
-
-    const handleCurrencySelection = (currency) => {
-        setSelectedCurrencies((prev) => {
-            const isSelected = prev.some((item) => item.code === currency.code);
-            return isSelected
-                ? prev.filter((item) => item.code !== currency.code)
-                : [...prev, currency];
-        });
-    };
-
-    const deleteSelected = (currency) => {
-        setSelectedCurrencies((prev) => prev.filter((item) => item.code !== currency.code));
-    };
-
-    const saveSelectedCurrenciesToMetafield = useCallback(async () => {
-        try {
-            const response = await fetch('/api/metafield', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    namespace: 'custom',
-                    key: 'selected_currencies',
-                    type: 'json',
-                    value: JSON.stringify(selectedCurrencies),
-                    ownerId: shopId,
-                }),
-            });
-
-            if (!response.ok) {
-                throw new Error(`Failed to update metafield: ${response.statusText}`);
-            }
-
-            const jsonResponse = await response.json();
-            console.log("Saved Metafield Response:", jsonResponse);
-        } catch (error) {
-            console.error("Error saving metafield:", error);
+  const mutation = `
+    mutation CreateMetafield($input: MetafieldsSetInput!) {
+      metafieldsSet(metafields: [$input]) {
+        metafields {
+          id
+          namespace
+          key
+          value
         }
-    }, [selectedCurrencies, shopId]);
-
-    useEffect(() => {
-        if (selectedCurrencies.length >= 0) {
-            saveSelectedCurrenciesToMetafield();
+        userErrors {
+          field
+          message
         }
-    }, [selectedCurrencies, saveSelectedCurrenciesToMetafield]);
+      }
+    }
+  `;
 
-    const currencyItems = currencies.map((currency) => ({
-        content: `${currency.name} (${currency.code})`,
-        onAction: () => handleCurrencySelection(currency),
-        active: selectedCurrencies.some((item) => item.code === currency.code),
-    }));
+  const variables = {
+    input: {
+      ownerId: "gid://shopify/Shop/84384940321",
+      namespace: "custom",
+      key: "selected_currencies",
+      type: "json",
+      value: JSON.stringify(selectedCurrencies),
+    },
+  };
 
-    return (
-        <Page>
-            <Layout>
-                <Layout.Section>
-                    <Card>
-                        <Text as="h5" variant="bodyMd">Shop ID: {shopId}</Text>
+  try {
+    const response = await client.request(mutation, variables);
+    return json(response);
+  } catch (error) {
+    console.error("Error updating metafield:", error);
+    return json({ error: "Failed to update metafield" }, { status: 500 });
+  }
+};
 
-                        <Text as="h5" variant="bodyMd">Select Currencies</Text>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '10px' }}>
-                            <Popover
-                                active={popoverActive}
-                                activator={
-                                    <Button onClick={togglePopover} disclosure>
-                                        Choose Currencies
-                                    </Button>
-                                }
-                                onClose={togglePopover}
-                            >
-                                <ActionList items={currencyItems} />
-                            </Popover>
+export default function Shop() {
+  const data = useLoaderData();
+  const fetcher = useFetcher();
+  const [selectedCurrencies, setSelectedCurrencies] = useState({});
+  const [dropdownOpen, setDropdownOpen] = useState(false);
 
-                            {selectedCurrencies.length > 0 && (
-                                <div>
-                                    <Text variant="bodyMd">Selected Currencies:</Text>
-                                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '5px' }}>
-                                        {selectedCurrencies.map((currency) => (
-                                            <div key={currency.code} style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                                <Badge status="success">
-                                                    {currency.name} ({currency.code})
-                                                </Badge>
-                                                <span
-                                                    style={{ cursor: 'pointer', color: 'red', fontWeight: 'bold' }}
-                                                    onClick={() => deleteSelected(currency)}
-                                                >
-                                                    ✖
-                                                </span>
-                                            </div>
-                                        ))}
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </Card>
-                </Layout.Section>
-            </Layout>
-        </Page>
+  const currencies = [
+    { name: "US Dollar", code: "USD" },
+    { name: "Euro", code: "EUR" },
+    { name: "British Pound", code: "GBP" },
+    { name: "Indian Rupee", code: "INR" },
+    { name: "Japanese Yen", code: "JPY" },
+  ];
+
+  // ✅ Load existing metafield values from Shopify
+  useEffect(() => {
+    const metafield = data.shop.metafields.edges.find(
+      (m) => m.node.namespace === "custom" && m.node.key === "selected_currencies"
     );
+
+    if (metafield && metafield.node.value) {
+      try {
+        setSelectedCurrencies(JSON.parse(metafield.node.value));
+      } catch (error) {
+        console.error("Failed to parse metafield JSON", error);
+      }
+    }
+  }, [data]);
+
+  const handleCurrencyChange = (event) => {
+    const { value, checked } = event.target;
+    const [code, name] = value.split(":");
+
+    setSelectedCurrencies((prev) => {
+      const updated = { ...prev };
+      if (checked) {
+        updated[code] = name; // ✅ Add currency if checked
+      } else {
+        delete updated[code]; // ✅ Remove currency if unchecked
+      }
+      return updated;
+    });
+  };
+
+  return (
+    <div>
+      <h1>Shop Info</h1>
+      <p><strong>ID:</strong> {data.shop.id}</p>
+      <p><strong>Name:</strong> {data.shop.name}</p>
+
+      <h2>Metafields</h2>
+      <ul>
+        {data.shop.metafields.edges.map(({ node }) => (
+          <li key={node.id}>
+            <strong>{node.namespace}.{node.key}:</strong> {node.value}
+          </li>
+        ))}
+      </ul>
+
+      <fetcher.Form method="post">
+        <div style={{ position: "relative", display: "inline-block" }}>
+          <button 
+            type="button" 
+            onClick={() => setDropdownOpen(!dropdownOpen)} 
+            style={{ padding: "10px", cursor: "pointer", borderRadius: "5px", background: "#007bff", color: "#fff", border: "none" }}
+          >
+            Select Currencies
+          </button>
+
+          {dropdownOpen && (
+            <div style={{ 
+              position: "absolute", 
+              top: "100%", 
+              left: 0, 
+              background: "#fff", 
+              border: "1px solid #ccc", 
+              borderRadius: "5px", 
+              padding: "10px", 
+              boxShadow: "0px 4px 6px rgba(0, 0, 0, 0.1)", 
+              zIndex: 1000
+            }}>
+              {currencies.map((currency) => (
+                <label key={currency.code} style={{ display: "block", padding: "5px 0" }}>
+                  <input
+                    type="checkbox"
+                    name="currencies"
+                    value={`${currency.code}:${currency.name}`}
+                    checked={selectedCurrencies.hasOwnProperty(currency.code)} // ✅ Fix: Uses hasOwnProperty() to check state
+                    onChange={handleCurrencyChange}
+                  />
+                  {currency.name}
+                </label>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* ✅ Hidden Inputs for Form Submission */}
+        {Object.entries(selectedCurrencies).map(([code, name]) => (
+          <input key={code} type="hidden" name="currencies" value={`${code}:${name}`} />
+        ))}
+
+        <div>
+          <h3>Selected Currencies:</h3>
+          <p>{Object.keys(selectedCurrencies).length > 0 
+            ? JSON.stringify(selectedCurrencies) 
+            : "None selected"}
+          </p>
+        </div>
+
+        <button type="submit" disabled={Object.keys(selectedCurrencies).length === 0}>
+          Update Metafield
+        </button>
+      </fetcher.Form>
+    </div>
+  );
 }
