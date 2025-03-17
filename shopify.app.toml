@@ -1,13 +1,15 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "18b76d78315aacd011bdaf526f519b90"
-application_url = "https://currency-switcher.onrender.com/"
+application_url = "https://eclipse-studies-else-versions.trycloudflare.com"
 embedded = true
 name = "currency-switcher"
 handle = "currency-switcher-17"
 
 [build]
 include_config_on_deploy = true
+dev_store_url = "teststorecvd.myshopify.com"
+automatically_update_urls_on_dev = true
 
 [webhooks]
 api_version = "2025-01"
@@ -25,7 +27,11 @@ api_version = "2025-01"
 scopes = "write_products"
 
 [auth]
-redirect_urls = [ "https://currency-switcher.onrender.com/" ]
+redirect_urls = [
+  "https://eclipse-studies-else-versions.trycloudflare.com/auth/callback",
+  "https://eclipse-studies-else-versions.trycloudflare.com/auth/shopify/callback",
+  "https://eclipse-studies-else-versions.trycloudflare.com/api/auth/callback"
+]
 
 [pos]
 embedded = false
