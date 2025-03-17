@@ -6,6 +6,9 @@ import { useState, useEffect } from "react";
 
 const GRAPHQL_ENDPOINT = "https://ankie-23.myshopify.com/admin/api/2024-01/graphql.json";
 
+
+
+
 const client = new GraphQLClient(GRAPHQL_ENDPOINT, {
   headers: {
     "X-Shopify-Access-Token": "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",
