@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "18b76d78315aacd011bdaf526f519b90"
-application_url = "https://eclipse-studies-else-versions.trycloudflare.com"
+application_url = "https://basket-globe-phil-rm.trycloudflare.com"
 embedded = true
 name = "currency-switcher"
 handle = "currency-switcher-17"
@@ -28,9 +28,9 @@ scopes = "write_products"
 
 [auth]
 redirect_urls = [
-  "https://eclipse-studies-else-versions.trycloudflare.com/auth/callback",
-  "https://eclipse-studies-else-versions.trycloudflare.com/auth/shopify/callback",
-  "https://eclipse-studies-else-versions.trycloudflare.com/api/auth/callback"
+  "https://basket-globe-phil-rm.trycloudflare.com/auth/callback",
+  "https://basket-globe-phil-rm.trycloudflare.com/auth/shopify/callback",
+  "https://basket-globe-phil-rm.trycloudflare.com/api/auth/callback"
 ]
 
 [pos]
